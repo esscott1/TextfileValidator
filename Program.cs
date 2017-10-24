@@ -40,7 +40,17 @@ namespace TextfileValidator
 	
 		static void Main(string[] args)
 		{
-			CreateDatesAndFileNames(10);
+
+            var options = new Options();
+           if (CommandLine.Parser.Default.ParseArguments(args, options))
+            {
+                Console.WriteLine("first was {0}", options.SampleDataGenArgs[0]);
+                Console.WriteLine("second was {0}", options.SampleDataGenArgs[1]);
+                Console.ReadLine();
+                Environment.Exit(0);
+            }
+
+            CreateDatesAndFileNames(10);
 			string baseFileName = @"C:\Projects\Playground\Eric.Scott\TextfileValidator\bin\Debug\BR_History.txt";
 			string ISIN = "GB00B15KY328";
 			//string targetFileName = GetTargetFileName(1);
@@ -268,7 +278,7 @@ namespace TextfileValidator
 
 	class Options
 	{
-		[Option('c', "sampledataArgs", Required = false, HelpText = "Input file | number of days of samplen")]
+		[OptionArray('c', "sampledataArgs", Required = false, HelpText = "Input file | number of days of samplen")]
 		public string[] SampleDataGenArgs { get; set; }
 
 		[Option('f', "datafilepath", Required = false, HelpText = "The TEXT data file to be validated")]
