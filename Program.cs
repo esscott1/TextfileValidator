@@ -13,29 +13,10 @@ namespace TextfileValidator
 	class Program
 	{
 		private static SortedList<DateTime, string> DateAndFileNames;
-		private static void CreateDatesAndFileNames (int DaysInPast)
-		{
-			DateAndFileNames = new SortedList<DateTime, string>();
-			System.Globalization.Calendar cal = CultureInfo.InvariantCulture.Calendar;
-			SortedList<int, string> sDates = new SortedList<int, string>();
-			int d = 1; int fileCount = 0;
-			while(fileCount<DaysInPast)
-			{
-				DateTime dt = DateTime.Now.AddDays(-d);
-				d++;
-				if(cal.GetDayOfWeek(dt) != DayOfWeek.Sunday && (cal.GetDayOfWeek(dt) != DayOfWeek.Saturday))
-				{
-					string sDate = dt.ToString("yyyy-MM-dd");
-					DateAndFileNames.Add(dt, @"C:\Projects\Playground\Eric.Scott\TextfileValidator\bin\Debug\eBR_History" + sDate + ".txt");
-					fileCount++;
-					
-				}
-			}
-			
-		}
+		
 		static void Menu(string[] args)
 		{
-		
+			//-f C:\Projects\Playground\Eric.Scott\TextfileValidator\bin\Debug\sampleDatafile.txt -d C:\Projects\Playground\Eric.Scott\TextfileValidator\bin\Debug\sampleDefinitionfile.txt -s "|"
 		}
 	
 		static void Main(string[] args)
@@ -44,13 +25,18 @@ namespace TextfileValidator
             var options = new Options();
            if (CommandLine.Parser.Default.ParseArguments(args, options))
             {
+				DataCreator dc = new DataCreator();
+				dc.WriteHistoryFile(@"C:\Projects\Playground\Eric.Scott\TextfileValidator\bin\Debug","BR_History","txt",
+					@"C:\Projects\Playground\Eric.Scott\TextfileValidator\bin\Debug","mkt_ETF_Analytics_Data","txt",20,null, null);
+					
+
                 Console.WriteLine("first was {0}", options.SampleDataGenArgs[0]);
-                Console.WriteLine("second was {0}", options.SampleDataGenArgs[1]);
                 Console.ReadLine();
                 Environment.Exit(0);
             }
+		   Environment.Exit(0);
 
-            CreateDatesAndFileNames(10);
+           // CreateDatesAndFileNames(10);
 			string baseFileName = @"C:\Projects\Playground\Eric.Scott\TextfileValidator\bin\Debug\BR_History.txt";
 			string ISIN = "GB00B15KY328";
 			//string targetFileName = GetTargetFileName(1);
