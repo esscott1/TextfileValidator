@@ -19,6 +19,15 @@ namespace TextfileValidator
 
 		public DataCreator() { }
 
+		private static bool GetRanadomDirection()
+		{
+			Random gen = new Random();
+			int prob = gen.Next(100);
+			bool increase = prob % 2 == 0;
+			return increase;
+
+		}
+
 		public void WriteHistoryFile(string BaseFilePath, string BaseFileName, string BasefileType,
 			string TargetFilePath, string TargetFileName, string TargetFileType,
 			int DayOfHistory, int[] HistoryForColumnNo, KeyValuePair<int, string>? subsetOn)
@@ -33,7 +42,8 @@ namespace TextfileValidator
 			// create history
 			for (int i = filesNames.Count - 1; i > 0; i--)
 			{
-				CreateHistoryFile(filesNames.ElementAt(i).Value, filesNames.ElementAt(i - 1).Value, filesNames.ElementAt(i - 1).Key);
+				CreateHistoryFile(filesNames.ElementAt(i).Value, filesNames.ElementAt(i - 1).Value, filesNames.ElementAt(i - 1).Key, HistoryForColumnNo);
+				Console.WriteLine("\r{0} of files left to create", i);
 			}
 		}
 		
@@ -42,7 +52,7 @@ namespace TextfileValidator
 			return double.TryParse(value, out iValue);
 		}
 
-		private void CreateHistoryFile(string baseFileName, string targetFileName, DateTime asOfDate)
+		private void CreateHistoryFile(string baseFileName, string targetFileName, DateTime asOfDate, int [] HistoryForColumnNo)
 		{
 			using (System.IO.StreamWriter wfile =
 						new StreamWriter(targetFileName, true))
@@ -56,15 +66,27 @@ namespace TextfileValidator
 				while ((line = r.ReadLine()) != null)
 				{
 					string[] items = line.Split(new char[] { Char.Parse("|") });
-					if (items.Contains("GB00B15KY328"))
-					{
+					//if (items.Contains("GB00B15KY328"))
+					//{
 						items[12] = asOfDate.ToShortDateString();
+						for (int j = 0; j < items.Length; j++)
+						{
+							if (HistoryForColumnNo.Contains(j))
+							{
+								items[j] = GetHistoricalValue(items[j], .1, GetRanadomDirection());
+							}
+							else if (j > 20)
+							{
+								items[j] = string.Empty;
+							}
+						}
+						//items[12] = asOfDate.ToShortDateString();
 						
-						items[19] = GetHistoricalValue(items[19], .1, true);
-						items[20] = GetHistoricalValue(items[20], .1, true);
-						// clearing out all other data.
-						for (int i = 21; i < items.Length; i++)
-							items[i] = string.Empty;
+						//items[19] = GetHistoricalValue(items[19], .1, true);
+						//items[20] = GetHistoricalValue(items[20], .1, true);
+						//// clearing out all other data.
+						//for (int i = 21; i < items.Length; i++)
+						//	items[i] = string.Empty;
 
 						StringBuilder sb = new StringBuilder(line.Length);
 						foreach (string item in items)
@@ -72,8 +94,7 @@ namespace TextfileValidator
 						sb.Remove(sb.Length - 1, 1);
 
 						wfile.WriteLine(sb.ToString());
-
-					}
+					//}
 					
 				}
 			}
@@ -109,7 +130,7 @@ namespace TextfileValidator
 				d++;
 				if (cal.GetDayOfWeek(dt) != DayOfWeek.Sunday && (cal.GetDayOfWeek(dt) != DayOfWeek.Saturday))
 				{
-					string sDate = dt.ToString("yyyy-MM-dd");
+					string sDate = dt.ToString("yyyyMMdd");
 					string fileName = FilePath + @"\"+ FileName +"_" + sDate + "." + fileType;
 					dateAndFileNames.Add(dt, fileName);
 					fileCount++;

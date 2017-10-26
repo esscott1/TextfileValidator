@@ -21,13 +21,15 @@ namespace TextfileValidator
 	
 		static void Main(string[] args)
 		{
-
-            var options = new Options();
+			
+           var options = new Options();
            if (CommandLine.Parser.Default.ParseArguments(args, options))
             {
 				DataCreator dc = new DataCreator();
+				int[] col = new int[] { 19, 20, 410, 458};
+
 				dc.WriteHistoryFile(@"C:\Projects\Playground\Eric.Scott\TextfileValidator\bin\Debug","BR_History","txt",
-					@"C:\Projects\Playground\Eric.Scott\TextfileValidator\bin\Debug","mkt_ETF_Analytics_Data","txt",20,null, null);
+					@"C:\Projects\Playground\Eric.Scott\TextfileValidator\bin\Debug", "mkt_ETF_Analytics_Data", "txt", 400, col, null);
 					
 
                 Console.WriteLine("first was {0}", options.SampleDataGenArgs[0]);
