@@ -21,7 +21,17 @@ namespace TextfileValidator
 	
 		static void Main(string[] args)
 		{
-			
+
+			System.Diagnostics.Stopwatch timer = new System.Diagnostics.Stopwatch();
+			timer.Start();
+			DAGScript ds = new DAGScript();
+			ds.run();
+			timer.Stop();
+			TimeSpan ts = timer.Elapsed;
+			Console.WriteLine("processed file in {0} time",String.Format("{0:00}:{1:00}:{2:00}", ts.Hours, ts.Minutes, ts.Seconds));
+			Console.ReadLine();
+			Environment.Exit(0);
+
            var options = new Options();
            if (CommandLine.Parser.Default.ParseArguments(args, options))
             {
@@ -266,11 +276,35 @@ namespace TextfileValidator
 
 	class Options
 	{
-		[OptionArray('c', "sampledataArgs", Required = false, HelpText = "Input file | number of days of samplen")]
+		
+		[OptionArray('m', "mockdatacreater", Required = false, HelpText = "Will create Mock Data; requires the following additional switched: Input file | number of days of samplen")]
 		public string[] SampleDataGenArgs { get; set; }
 
-		[Option('f', "datafilepath", Required = false, HelpText = "The TEXT data file to be validated")]
+		[Option('a', "SeedFile", Required = false, HelpText = "The seed file by which the history will be based on.")]
 		public string InputFile { get; set; }
+
+		[Option('o', "seedfilepath", Required = false, HelpText = "Path for where the output files will be created.")]
+		public string SeedFilePath { get; set; }
+
+		[Option('n', "outputfile", Required = false, HelpText = "Output file(s) name including extension. And underscore date will be added to the end of the file name.")]
+		public string OutputPath { get; set; }
+
+		[Option('c', "DaysOfHistory", Required = false, HelpText = "The number of days of history to create.")]
+		public string sNumberOfDays { get; set; }
+
+		[OptionArray('c', "StaticColumnNo", Required = false, HelpText = "Column Numbers that are static")]
+		public string StaticColumnNo { get; set; }
+
+		[OptionArray('v', "VariableColumnNo", Required = false, HelpText = "Column Numbers that are variable and will be different each day")]
+		public string VariableColumnNo { get; set; }
+
+		[OptionArray('x', "DateColumnNo", Required = false, HelpText = "Column Numbers that contain the as of date of data.")]
+		public string DataColumnNo { get; set; }
+
+		
+
+		//[Option('f', "datafilepath", Required = false, HelpText = "The TEXT data file to be validated")]
+		//public string InputFile { get; set; }
 
 		[Option('d', "defintionfilepath", Required = false, HelpText = "the definition file to be validated")]
 		public string DefinitionFilePath { get; set; }
