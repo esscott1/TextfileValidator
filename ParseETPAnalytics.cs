@@ -5,6 +5,8 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 
 
 class DAGScript 
@@ -25,6 +27,14 @@ class DAGScript
 	}
     public void run()
     {
+		FileLineCache = new Dictionary<string, List<string>>();
+		string [] sFileNames = {
+									@"C:\Projects\Playground\Eric.Scott\01TestData\mkt_ETF_Analytics_Data_20120813.txt",
+								   @"C:\Projects\Playground\Eric.Scott\01TestData\mkt_ETF_Analytics_Data_20171017.txt",
+								   @"C:\Projects\Playground\Eric.Scott\01TestData\mkt_ETF_Analytics_Data_20171018.txt",
+								   @"C:\Projects\Playground\Eric.Scott\01TestData\mkt_ETF_Analytics_Data_20171019.txt",
+								   @"C:\Projects\Playground\Eric.Scott\01TestData\mkt_ETF_Analytics_Data_20171020.txt"
+								  };
 		string sFileName = @"C:\Projects\Playground\Eric.Scott\01TestData\mkt_ETF_Analytics_Data_20120813.txt";
 		//oLog.Log("ENV: " + GetEnvironment());  //grabs current env (D1,A1,P1,P2,P3) and writes to log
 		//InitDictionary(dTableMap);
@@ -40,10 +50,15 @@ class DAGScript
 
 		//			if (sFileName.Contains("mkt_ETF_Analytics_Data"))
 		//			{
-
-				InitDictionary(dTableMap);		
-				ParseFile(sFileName);
-//iFilesProcessed++;
+		
+				InitDictionary(dTableMap);
+				//Parallel.ForEach(sFileNames, (file) =>
+				//	{
+				//		ParseFile(file);
+				//	});
+				foreach (string esFileName in sFileNames)
+					ParseFile(esFileName);
+			//iFilesProcessed++;
 				//	}
 				//	else 
 				//	{
@@ -173,43 +188,90 @@ class DAGScript
     }
 
     private void ParseFile(string sFileName)
-    {       
+    {
+		string sDate = sFileName.Substring(sFileName.Length - 12, 8);
         using (StreamReader SR = new StreamReader(sFileName))
         {
-            while (SR.Peek() > 0)
-            {
-                string sLine = SR.ReadLine();
-                foreach (KeyValuePair<string, string> Pair in dTableMap)
-                {
-                    ExtractData(sLine, Pair);
-                }
-            }
+			while (SR.Peek() > 0)
+			{
+				string sLine = SR.ReadLine();
+				//Parallel.ForEach(dTableMap, (Pair) =>
+				//	{
+				//		ExtractData(sLine, Pair, sDate);
+				//	});
+
+				//foreach (KeyValuePair<string, string> Pair in dTableMap)
+				//{
+				//	ExtractData(sLine, Pair, sDate);
+				//}
+
+				foreach (KeyValuePair<string, string> Pair in dTableMap)
+				{
+					ExtractData(sLine, Pair, sDate);
+				}
+			}
+			FlushCache();
         }
     }
 
-    private void ExtractData(string sLineData, KeyValuePair<string, string> Pair)
+    private void ExtractData(string sLineData, KeyValuePair<string, string> Pair, string sDate)
     {
         string sFileName = Pair.Key;
         string sColumDef = Pair.Value;
-        string[] oColumDef = sColumDef.Split(',');
-        string[] oLineData = sLineData.Split('|');
+        string[] oColumDef = sColumDef.Split(','); // the column number I'm after in the Line.
+        string[] oLineData = sLineData.Split('|'); // the array of data in the file I care about.
 
+		string sNewLineForTable = "";
+		foreach (string colNo in oColumDef)
+		{
+			sNewLineForTable += oLineData[int.Parse(colNo)] + "|";
+		}
 
-        string sNewLineForTable = "";
-        for (int jx = 0; jx < oColumDef.Length; jx++)
-        {
-            for (int idx = 0; idx < oLineData.Length; idx++)
-            {
-                if (oColumDef[jx] == idx.ToString())
-                {
-                    sNewLineForTable += oLineData[idx] + "|";
-                    break;
-                }
-            }
-        }
+		//for (int jx = 0; jx < oColumDef.Length; jx++)
+		//{
+		//	for (int idx = 0; idx < oLineData.Length; idx++)
+		//	{
+		//		if (oColumDef[jx] == idx.ToString())
+		//		{
+		//			sNewLineForTable += oLineData[idx] + "|";
+		//			break;
+		//		}
+		//	}
+		//}
         sNewLineForTable = sNewLineForTable.Substring(0, sNewLineForTable.LastIndexOf('|'));
-        AddLine(sFileName, sNewLineForTable);
+		sFileName = sFileName.Substring(0, sFileName.Length - 4) + "_" + sDate + ".txt";
+        eAddLines(sFileName, sNewLineForTable);
     }
+	
+	Dictionary<string, List<string>> FileLineCache {get;set;}
+	
+	private void eAddLines(string sFileName, string sLinesOfData)
+	{
+		if(!FileLineCache.ContainsKey(sFileName))
+			FileLineCache.Add(sFileName, new List<string>());
+		FileLineCache[sFileName].Add(sLinesOfData);
+
+		if(FileLineCache[sFileName].Count>20){
+			using (StreamWriter SW = new StreamWriter(sFileName, true))
+			{
+				foreach(string line in FileLineCache[sFileName])
+					SW.WriteLine(line);
+			}
+			FileLineCache[sFileName].Clear();
+		}
+	}
+	private void FlushCache()
+	{
+		foreach(KeyValuePair<string, List<string>> kvp in FileLineCache)
+		{
+			using (StreamWriter SW = new StreamWriter(kvp.Key, true))
+			{
+				foreach (string line in kvp.Value)
+					SW.WriteLine(line);
+			}
+		}
+		FileLineCache.Clear();
+	}
 
     private void AddLine(string sFileName, string sLineData)
     {
