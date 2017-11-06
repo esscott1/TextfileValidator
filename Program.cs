@@ -8,19 +8,282 @@ using CommandLine;
 using CommandLine.Text;
 using CommandLine.Parsing;
 using System.Globalization;
+using System.Net;
 namespace TextfileValidator
 {
 	class Program
 	{
 		private static SortedList<DateTime, string> DateAndFileNames;
+		private static string sLog;
+		//private static Chilkat.SFtp sftp; 
 		
 		static void Menu(string[] args)
 		{
 			//-f C:\Projects\Playground\Eric.Scott\TextfileValidator\bin\Debug\sampleDatafile.txt -d C:\Projects\Playground\Eric.Scott\TextfileValidator\bin\Debug\sampleDefinitionfile.txt -s "|"
 		}
-	
+
+		static Chilkat.SFtp initSftp()
+		{
+			Chilkat.SFtp sftp = new Chilkat.SFtp();
+			bool success = sftp.UnlockComponent("Anything for 30-day trial");
+			if (success != true)
+			{
+				Console.WriteLine(sftp.LastErrorText);
+			}
+
+			sftp.ConnectTimeoutMs = 10000;
+			sftp.IdleTimeoutMs = 10000;
+
+			//  Connect to the SSH server.
+			//  The standard SSH port = 22
+			//  The hostname may be a hostname or IP address.
+			int port;
+			string hostname;
+			hostname = "sftp1.wallst.com";
+			port = 22;
+			success = sftp.Connect(hostname, port);
+			if (success != true)
+			{
+				Console.WriteLine(sftp.LastErrorText);
+				return sftp;
+			}
+
+			//  Authenticate with the SSH server.  Chilkat SFTP supports
+			//  both password-based authenication as well as public-key
+			//  authentication.  This example uses password authenication.
+			success = sftp.AuthenticatePw("BLRK-LON-DTC-DS", "n19!y!7AcTaP");
+			if (success != true)
+			{
+				Console.WriteLine(sftp.LastErrorText);
+				return sftp;
+			}
+
+			//  After authenticating, the SFTP subsystem must be initialized:
+			success = sftp.InitializeSftp();
+			if (success != true)
+			{
+				Console.WriteLine(sftp.LastErrorText);
+				return sftp;
+			}
+
+			return sftp;
+		}
+
+
+		static List<string> GetFileNamesInFtp(List<string> theseDates)
+		{
+			Dictionary<string, int> FilesAndSizes = new Dictionary<string, int>();
+			List<string> result = new List<string>();
+			List<Chilkat.SFtpFile> files = new List<Chilkat.SFtpFile>();
+			Chilkat.SFtp sftp = initSftp();
+			bool success;
+
+			//  Open a directory on the server...
+			//  Paths starting with a slash are "absolute", and are relative
+			//  to the root of the file system. Names starting with any other
+			//  character are relative to the user's default directory (home directory).
+			//  A path component of ".." refers to the parent directory,
+			//  and "." refers to the current directory.
+			string handle;
+			//handle = sftp.OpenDir("/Incoming/FromETP/History");
+			handle = sftp.OpenDir("/Incoming/FromETP/AdditionalHistoryBenchmark");
+			if (sftp.LastMethodSuccess != true)
+			{
+				Console.WriteLine(sftp.LastErrorText);
+				return result;
+			}
+
+			//  Download the directory listing:
+			Chilkat.SFtpDir dirListing = null;
+			dirListing = sftp.ReadDir(handle);
+			if (sftp.LastMethodSuccess != true)
+			{
+				Console.WriteLine(sftp.LastErrorText);
+				return result;
+			}
+			int i;
+			int n = dirListing.NumFilesAndDirs;
+			if (n == 0)
+			{		Console.WriteLine("No entries found in this directory.");}
+			else
+			{
+				int count = 0;
+				for (i = 0; i <= n - 1; i++)
+				{
+					Chilkat.SFtpFile fileObj = null;
+					fileObj = dirListing.GetFileObject(i);
+					FilesAndSizes.Add(fileObj.Filename, fileObj.Size32);
+					files.Add(fileObj);
+					
+					count = i;
+				}
+				Console.WriteLine("found {0} Candidate files", count);
+				count = 0;
+				foreach (string date in theseDates)
+				{
+					 int trytimes = 0;
+					string searchDate = date;
+					string sFileName = String.Empty;
+					do{
+						
+						trytimes++;
+						if (trytimes > 10)
+						{
+							log("Error, didn't find for " + searchDate);
+							break; // didn't find one for this month
+						}
+						var Ifiles = FilesAndSizes.Where(pv => 
+								pv.Key.Contains(searchDate)).Select(pv => pv.Key);
+						if(Ifiles.Count() == 0)
+						{	searchDate = PreviousDay(searchDate);
+							continue;
+						}
+						if(Ifiles.Count()>1)
+							throw new Exception("more than one file found");
+
+						sFileName = Ifiles.FirstOrDefault();
+						if(FilesAndSizes[sFileName] < 4000)
+						{
+							searchDate = PreviousDay(searchDate);
+							sFileName = String.Empty;
+							continue;
+						}
+						result.Add(sFileName);
+						count++;
+					}while(sFileName == String.Empty);
+				}
+
+				Console.WriteLine("found {0} files", count);
+
+			}
+
+			//  Close the directory
+			success = sftp.CloseHandle(handle);
+			if (success != true)
+			{
+				Console.WriteLine(sftp.LastErrorText);
+				return result;
+			}
+
+			Console.WriteLine("Success.");
+			sftp.Disconnect();
+			return result;
+
+		}
+		static void log(string entry)
+		{
+			sLog = sLog + Environment.NewLine + entry;
+		}
+		static string PreviousDay(string date)
+		{
+			DateTime newdate = new DateTime(int.Parse(date.Substring(0, 4)), int.Parse(date.Substring(4, 2)), int.Parse(date.Substring(6, 2)));
+			return newdate.AddDays(-1).ToString(@"yyyyMMdd");
+
+		}
+		static List<string> GetLastTradeDayOfMonth()
+		{
+			int count = 0;
+			List<string> lastdaysofmonth = new List<string>();
+			DateTime today = DateTime.Today;
+			int Month = today.Month;
+			int Year = today.Year;
+			for (int y = 2000; y < 2018; y++)
+			{
+				for (int m = 1; m < 13; m++)
+				{
+					DateTime endOfMonth = new DateTime(y,
+										   m,
+										   DateTime.DaysInMonth(y,
+																m));
+
+					while (endOfMonth.DayOfWeek == DayOfWeek.Saturday || endOfMonth.DayOfWeek == DayOfWeek.Sunday)
+						endOfMonth = endOfMonth.AddDays(-1);
+					lastdaysofmonth.Add(endOfMonth.ToString(@"yyyMMdd"));
+				//	Console.WriteLine("last day of month number {0} is {1}", endOfMonth.Month, endOfMonth.ToString(@"yyyMMdd"));
+					count = count + 1;
+				}
+			}
+			Console.WriteLine("found {0} last trading days",count); 
+			return lastdaysofmonth;
+			//Environment.Exit(0);
+
+		}
+
+		static void MovefileToEmpty(Chilkat.SFtp sftp, string fileName)
+		{
+			Console.WriteLine("path is {0}", AppDomain.CurrentDomain.BaseDirectory);
+			string remoteFilePath = "/Incoming/FromETP/History/"+fileName;
+			string newRemoteFilePath = "/Incoming/FromETP/History/Empty/"+fileName;
+			string localfilePath = AppDomain.CurrentDomain.BaseDirectory + fileName;
+			bool success;
+			success = sftp.DownloadFileByName(remoteFilePath, localfilePath);
+			if (success != true)
+			{
+				Console.WriteLine(sftp.LastErrorText);
+			}
+			success = sftp.UploadFileByName(newRemoteFilePath, localfilePath);
+			if (success != true)
+			{
+				Console.WriteLine(sftp.LastErrorText);
+			}
+			DeleteLocal(localfilePath);
+
+		}
+
+		static void MovefileToLastDayOfMonth(Chilkat.SFtp sftp, string fileName)
+		{
+			Console.WriteLine("path is {0}", AppDomain.CurrentDomain.BaseDirectory);
+			//string remoteFilePath = "/Incoming/FromETP/History/" + fileName;
+			//string newRemoteFilePath = "/Incoming/FromETP/History/LastDayOfMonth/" + fileName;
+
+			string remoteFilePath = "/Incoming/FromETP/AdditionalHistoryBenchmark/" + fileName;
+			string newRemoteFilePath = "/Incoming/FromETP/AdditionalHistoryBenchmark/LastDayOfMonth/" + fileName;
+
+			string localfilePath = AppDomain.CurrentDomain.BaseDirectory + fileName;
+			bool success;
+			success = sftp.DownloadFileByName(remoteFilePath, localfilePath);
+			if (success != true)
+			{
+				Console.WriteLine(sftp.LastErrorText);
+			}
+			success = sftp.UploadFileByName(newRemoteFilePath, localfilePath);
+			if (success != true)
+			{
+				Console.WriteLine(sftp.LastErrorText);
+			}
+			DeleteLocal(localfilePath);
+
+		}
+		static void DeleteLocal(string file)
+		{
+			if (File.Exists(file))
+				File.Delete(file);
+			return;
+		}
 		static void Main(string[] args)
 		{
+			//Chilkat.SFtp sftp = new Chilkat.SFtp();
+		//	Movefile(initSftp());
+		//	PrintFileNamesInFtp();
+			int count = 0 ;
+			List<string> lLastDays = GetLastTradeDayOfMonth();
+			List<string> lFiles = GetFileNamesInFtp(lLastDays);
+			foreach (string file in lFiles)
+			{
+				Console.WriteLine("move {0}", file);
+				MovefileToLastDayOfMonth(initSftp(), file);
+				log("success, moved file " + file);
+				count++;
+			}
+			System.IO.File.WriteAllText(Environment.CurrentDirectory+@"\log.txt",sLog);
+			Console.WriteLine("returned {0} dates", count);
+			
+			Chilkat.SFtp sftp = initSftp();
+			
+			
+			//Console.WriteLine("the current directory is {0}", Environment.CurrentDirectory);
+			Console.ReadLine();
+			Environment.Exit(0);
 
 			System.Diagnostics.Stopwatch timer = new System.Diagnostics.Stopwatch();
 			timer.Start();

@@ -10,6 +10,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = ".nuget", ".nuget", "{7BCA79
 		.nuget\NuGet.targets = .nuget\NuGet.targets
 	EndProjectSection
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PyprTextTools", "..\PyprTextTools\PyprTextTools.csproj", "{CBBF53A2-B365-4F5E-84CD-4F17AA53F9DC}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PyprTextToolLib", "PyprTextToolLib\PyprTextToolLib.csproj", "{05345CAB-C416-4392-938F-A45E73C472F0}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -20,6 +24,14 @@ Global
 		{4AF6A02F-8764-455E-91B7-8971446FB1DF}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{4AF6A02F-8764-455E-91B7-8971446FB1DF}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{4AF6A02F-8764-455E-91B7-8971446FB1DF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{CBBF53A2-B365-4F5E-84CD-4F17AA53F9DC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CBBF53A2-B365-4F5E-84CD-4F17AA53F9DC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CBBF53A2-B365-4F5E-84CD-4F17AA53F9DC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CBBF53A2-B365-4F5E-84CD-4F17AA53F9DC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{05345CAB-C416-4392-938F-A45E73C472F0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{05345CAB-C416-4392-938F-A45E73C472F0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{05345CAB-C416-4392-938F-A45E73C472F0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{05345CAB-C416-4392-938F-A45E73C472F0}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
