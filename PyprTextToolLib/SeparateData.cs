@@ -20,6 +20,8 @@ namespace PyprTextToolLib
 
 		public SeparateData(string outputDirectory, string[] fileNames, bool? useParallelForEach = false)
 		{
+			if (useParallelForEach == null)
+				useParallelForEach = false;
 			UseParallelForEach = useParallelForEach.Value;
 			dTableMap = new Dictionary<string, string>();
 			FileLineCache = new Dictionary<string, List<string>>();
