@@ -16,7 +16,8 @@ namespace PyprTextToolLib
 		private Dictionary<string, string> dTableMap;
 		private bool UseParallelForEach { get; set; }
 
-		private Dictionary<string, List<string>> FileLineCache { get; set; }
+		[ThreadStatic]
+		private Dictionary<string, List<string>> FileLineCache;
 
 		public SeparateData(string outputDirectory, string[] fileNames, bool? useParallelForEach = false)
 		{
@@ -57,6 +58,7 @@ namespace PyprTextToolLib
 		{
 			//return Task.Run(() =>
 			//	{
+			
 					string sDate = sFileName.Substring(sFileName.Length - 12, 8);
 					using (StreamReader SR = new StreamReader(sFileName))
 					{
@@ -65,16 +67,24 @@ namespace PyprTextToolLib
 							string sLine = SR.ReadLine();
 							if (UseParallelForEach)
 							{
-								Parallel.ForEach(dTableMap, (Pair) =>
-									{
-										ExtractData(sLine, Pair, sDate);
-									});
+								var threadFileLineCache = new ThreadLocal<Dictionary<string, List<string>>>(() => FileLineCache = new Dictionary<string, List<string>>(), false);
+								Parallel.ForEach<KeyValuePair<string, string>, Dictionary<string, List<string>>>
+									(
+										dTableMap,
+										() => new Dictionary<string, List<string>>(),
+										(Pair, loop, cache) =>
+										{
+											ExtractData(sLine, Pair, sDate, cache); 
+											return cache;
+										}, 
+										(cache) =>  FlushCache(cache)
+									);
 							}
 							else
 							{
 								foreach (KeyValuePair<string, string> Pair in dTableMap)
 								{
-									ExtractData(sLine, Pair, sDate);
+									ExtractData(sLine, Pair, sDate, FileLineCache);
 								}
 							}
 							if (ct.IsCancellationRequested)
@@ -89,7 +99,7 @@ namespace PyprTextToolLib
 				//}, ct);
 		}
 
-		private void ExtractData(string sLineData, KeyValuePair<string, string> Pair, string sDate)
+		private void ExtractData(string sLineData, KeyValuePair<string, string> Pair, string sDate, Dictionary<string, List<string>> fileLineCache)
 		{
 			string sFileName = Pair.Key;
 			string sColumDef = Pair.Value;
@@ -104,11 +114,13 @@ namespace PyprTextToolLib
 					
 			sNewLineForTable = sNewLineForTable.Substring(0, sNewLineForTable.LastIndexOf('|'));
 			sFileName = sFileName.Substring(0, sFileName.Length - 4) + "_" + sDate + ".txt";
-			eAddLines(sFileName, sNewLineForTable);
+			eAddLines(sFileName, sNewLineForTable, fileLineCache);
 		}
 
-		private void eAddLines(string sFileName, string sLinesOfData)
+		private void eAddLines(string sFileName, string sLinesOfData, Dictionary<string, List<string>> fileLineCache)
 		{
+			//if(FileLineCache == null)
+			//	FileLineCache = new Dictionary<string, List<string>>();
 			if (!FileLineCache.ContainsKey(sFileName))
 				FileLineCache.Add(sFileName, new List<string>());
 			FileLineCache[sFileName].Add(sLinesOfData);
@@ -122,6 +134,9 @@ namespace PyprTextToolLib
 				}
 				FileLineCache[sFileName].Clear();
 			}
+		}
+		private void FlushCache(Dictionary<string, List<string>> cache)
+		{
 		}
 
 		/// <summary>
