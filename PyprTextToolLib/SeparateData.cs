@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -16,8 +17,9 @@ namespace PyprTextToolLib
 		private Dictionary<string, string> dTableMap;
 		private bool UseParallelForEach { get; set; }
 
-		[ThreadStatic]
-		private Dictionary<string, List<string>> FileLineCache;
+		//[ThreadStatic]
+		//private Dictionary<string, List<string>> FileLineCache;
+		private ConcurrentDictionary<string, ConcurrentBag<string>> FileLineCache;
 
 		public SeparateData(string outputDirectory, string[] fileNames, bool? useParallelForEach = false)
 		{
@@ -25,7 +27,7 @@ namespace PyprTextToolLib
 				useParallelForEach = false;
 			UseParallelForEach = useParallelForEach.Value;
 			dTableMap = new Dictionary<string, string>();
-			FileLineCache = new Dictionary<string, List<string>>();
+			FileLineCache = new ConcurrentDictionary<string, ConcurrentBag<string>>();
 			OutputDirectory = outputDirectory;
 			sFileNames = fileNames;
 			InitDictionary(dTableMap);
@@ -37,18 +39,32 @@ namespace PyprTextToolLib
 			return Task.Run(() =>
 				{
 					int total = sFileNames.Count();
-					foreach (string esFileName in sFileNames)
+					if (UseParallelForEach)
 					{
-						if (ct.IsCancellationRequested)
+						ConcurrentDictionary<string, string> ConCurrentTableMap =
+							new ConcurrentDictionary<string, string>(dTableMap);
+						Parallel.ForEach(sFileNames,
+							(file) =>
+							{
+								ParseFile(file, subProg, ct);
+								prog.Report(1);
+							}
+						);
+					}
+					else
+					{
+						foreach (string esFileName in sFileNames)
 						{
-							throw new OperationCanceledException();
+							if (ct.IsCancellationRequested)
+							{
+								throw new OperationCanceledException();
+							}
+
+							ParseFile(esFileName, subProg, ct);
+							prog.Report(1);
+							total--;
 						}
-
-						 ParseFile(esFileName, subProg, ct);
-						
-						prog.Report(1);
-						total--;
-
+						FlushCache();
 					}
 				}, ct);
 		}
@@ -56,50 +72,32 @@ namespace PyprTextToolLib
 
 		private void ParseFile(string sFileName, IProgress<int> prog, CancellationToken ct)
 		{
-			//return Task.Run(() =>
-			//	{
-			
 					string sDate = sFileName.Substring(sFileName.Length - 12, 8);
 					using (StreamReader SR = new StreamReader(sFileName))
 					{
 						while (SR.Peek() > 0)
 						{
 							string sLine = SR.ReadLine();
-							if (UseParallelForEach)
+							if (false)
 							{
-								var threadFileLineCache = new ThreadLocal<Dictionary<string, List<string>>>(() => FileLineCache = new Dictionary<string, List<string>>(), false);
-								Parallel.ForEach<KeyValuePair<string, string>, Dictionary<string, List<string>>>
-									(
-										dTableMap,
-										() => new Dictionary<string, List<string>>(),
-										(Pair, loop, cache) =>
-										{
-											ExtractData(sLine, Pair, sDate, cache); 
-											return cache;
-										}, 
-										(cache) =>  FlushCache(cache)
-									);
 							}
 							else
 							{
 								foreach (KeyValuePair<string, string> Pair in dTableMap)
 								{
-									ExtractData(sLine, Pair, sDate, FileLineCache);
+									ExtractLineData(sLine, Pair, sDate);
 								}
 							}
 							if (ct.IsCancellationRequested)
 							{
-								FlushCache();
 								throw new OperationCanceledException();
 							}
 							prog.Report(1);
 						}
-						FlushCache();
 					}
-				//}, ct);
 		}
 
-		private void ExtractData(string sLineData, KeyValuePair<string, string> Pair, string sDate, Dictionary<string, List<string>> fileLineCache)
+		private void ExtractLineData(string sLineData, KeyValuePair<string, string> Pair, string sDate)
 		{
 			string sFileName = Pair.Key;
 			string sColumDef = Pair.Value;
@@ -113,46 +111,51 @@ namespace PyprTextToolLib
 			}
 					
 			sNewLineForTable = sNewLineForTable.Substring(0, sNewLineForTable.LastIndexOf('|'));
-			sFileName = sFileName.Substring(0, sFileName.Length - 4) + "_" + sDate + ".txt";
-			eAddLines(sFileName, sNewLineForTable, fileLineCache);
+			string WriteFileName = sFileName.Substring(0, sFileName.Length - 4) + "_" + sDate + ".txt";
+			eAddLines(WriteFileName, sNewLineForTable);
 		}
 
-		private void eAddLines(string sFileName, string sLinesOfData, Dictionary<string, List<string>> fileLineCache)
+		private void eAddLines(string sFileName, string sLinesOfData)
 		{
-			//if(FileLineCache == null)
-			//	FileLineCache = new Dictionary<string, List<string>>();
 			if (!FileLineCache.ContainsKey(sFileName))
-				FileLineCache.Add(sFileName, new List<string>());
+				FileLineCache.TryAdd(sFileName, new ConcurrentBag<string>());
 			FileLineCache[sFileName].Add(sLinesOfData);
 
 			if (FileLineCache[sFileName].Count > 20)
 			{
-				using (StreamWriter SW = new StreamWriter(sFileName, true))
+				using (StreamWriter SW = new StreamWriter(sFileName, true)) // thread contention
 				{
-					foreach (string line in FileLineCache[sFileName])
-						SW.WriteLine(line);
+					//Console.WriteLine("Writing to file |{0}| from thread |{1}", sFileName, Thread.CurrentThread.ManagedThreadId.ToString());
+					var bag = FileLineCache[sFileName];
+					string line;
+					while(!bag.IsEmpty)
+					{
+						if(bag.TryTake(out line))
+							SW.Write(line);
+					}
 				}
-				FileLineCache[sFileName].Clear();
 			}
 		}
-		private void FlushCache(Dictionary<string, List<string>> cache)
-		{
-		}
+	
 
 		/// <summary>
 		///  not thread safe
 		/// </summary>
 		private void FlushCache()
 		{
-			foreach (KeyValuePair<string, List<string>> kvp in FileLineCache)
+			foreach (KeyValuePair<string, ConcurrentBag<string>> kvp in FileLineCache)
 			{
 				using (StreamWriter SW = new StreamWriter(kvp.Key, true))
 				{
-					foreach (string line in kvp.Value)
-						SW.WriteLine(line);
+					var bag = FileLineCache[kvp.Key];
+					string line;
+					while (!bag.IsEmpty)
+					{
+						if (bag.TryTake(out line))
+							SW.Write(line);
+					}
 				}
 			}
-			FileLineCache.Clear();
 		}
 
 		private void InitDictionary(Dictionary<string, string> dTableMap)
