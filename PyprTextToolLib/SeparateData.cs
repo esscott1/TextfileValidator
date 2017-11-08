@@ -70,11 +70,12 @@ namespace PyprTextToolLib
 						}
 						foreach(KeyValuePair<string, ConcurrentBag<string>> kvp in FileLineCache)
 						{
-
 						Console.WriteLine("Cache has |{0}| files that need to write |{1}| file", kvp.Value.Count(), kvp.Key);
 						}
-						//FlushCache();
+					
 					}
+					Console.WriteLine("Final flushing Cache");
+					FlushCache();
 				}, ct);
 		}
 		
@@ -133,7 +134,7 @@ namespace PyprTextToolLib
 				FileLineCache.TryAdd(sFileName, new ConcurrentBag<string>());
 			FileLineCache[sFileName].Add(sLinesOfData);
 
-			if (FileLineCache[sFileName].Count > 40)
+			if (FileLineCache[sFileName].Count > 10)
 			{
 				FlushCacheForFile(sFileName);
 			}
