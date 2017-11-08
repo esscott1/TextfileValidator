@@ -262,6 +262,12 @@ namespace TextfileValidator
 		}
 		static void Main(string[] args)
 		{
+			Console.WriteLine("do you want to move files on production FTP?");
+
+			Console.ReadLine();
+			Console.WriteLine("are you sure");
+			Console.ReadLine();
+
 			//Chilkat.SFtp sftp = new Chilkat.SFtp();
 		//	Movefile(initSftp());
 		//	PrintFileNamesInFtp();
