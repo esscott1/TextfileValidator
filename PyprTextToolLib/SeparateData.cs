@@ -39,17 +39,21 @@ namespace PyprTextToolLib
 			return Task.Run(() =>
 				{
 					int total = sFileNames.Count();
-					if (UseParallelForEach)
+					if (UseParallelForEach) // each thread will handle the reading of and writing out of a single file.
 					{
 						ConcurrentDictionary<string, string> ConCurrentTableMap =
 							new ConcurrentDictionary<string, string>(dTableMap);
 						Parallel.ForEach(sFileNames,
 							(file) =>
 							{
-								ParseFile(file, subProg, ct);
+								ParseFile(file);
 								prog.Report(1);
 							}
 						);
+						foreach (KeyValuePair<string, ConcurrentBag<string>> kvp in FileLineCache)
+						{
+							Console.WriteLine("Cache has |{0}| files that need to write |{1}| file", kvp.Value.Count(), kvp.Key);
+						}
 					}
 					else
 					{
@@ -60,24 +64,31 @@ namespace PyprTextToolLib
 								throw new OperationCanceledException();
 							}
 
-							ParseFile(esFileName, subProg, ct);
+							ParseFile(esFileName);
 							prog.Report(1);
 							total--;
 						}
-						FlushCache();
+						foreach(KeyValuePair<string, ConcurrentBag<string>> kvp in FileLineCache)
+						{
+
+						Console.WriteLine("Cache has |{0}| files that need to write |{1}| file", kvp.Value.Count(), kvp.Key);
+						}
+						//FlushCache();
 					}
 				}, ct);
 		}
 		
 
-		private void ParseFile(string sFileName, IProgress<int> prog, CancellationToken ct)
+		private void ParseFile(string sFileName)
 		{
+				Console.WriteLine("thread number |{0}| is working on file |{1}|", System.Threading.Thread.CurrentThread.ManagedThreadId, sFileName);
 					string sDate = sFileName.Substring(sFileName.Length - 12, 8);
 					using (StreamReader SR = new StreamReader(sFileName))
 					{
 						while (SR.Peek() > 0)
 						{
 							string sLine = SR.ReadLine();
+							
 							if (false)
 							{
 							}
@@ -88,21 +99,22 @@ namespace PyprTextToolLib
 									ExtractLineData(sLine, Pair, sDate);
 								}
 							}
-							if (ct.IsCancellationRequested)
-							{
-								throw new OperationCanceledException();
-							}
-							prog.Report(1);
+							//if (ct.IsCancellationRequested)
+							//{
+							//	throw new OperationCanceledException();
+							//}
+							//prog.Report(1);
 						}
 					}
 		}
 
-		private void ExtractLineData(string sLineData, KeyValuePair<string, string> Pair, string sDate)
+		private void ExtractLineData(string sLineData, KeyValuePair<string, string> tableMapPair, string sDate)
 		{
-			string sFileName = Pair.Key;
-			string sColumDef = Pair.Value;
-			string[] oColumDef = sColumDef.Split(','); // the column number I'm after in the Line.
-			string[] oLineData = sLineData.Split('|'); // the array of data in the file I care about.
+			string sFileName = tableMapPair.Key; // target file name w/o date suffix
+			string WriteFileName = sFileName.Substring(0, sFileName.Length - 4) + "_" + sDate + ".txt"; // creating the actual file name to write to.
+			string[] oColumDef = tableMapPair.Value.Split(','); // columns in the source file that go into the target file
+			//string[] oColumDef = sColumDef.Split(','); // the column number I'm after in the Line.
+			string[] oLineData = sLineData.Split('|'); // source file data converted to array data.
 
 			string sNewLineForTable = "";
 			foreach (string colNo in oColumDef)
@@ -111,7 +123,7 @@ namespace PyprTextToolLib
 			}
 					
 			sNewLineForTable = sNewLineForTable.Substring(0, sNewLineForTable.LastIndexOf('|'));
-			string WriteFileName = sFileName.Substring(0, sFileName.Length - 4) + "_" + sDate + ".txt";
+			
 			eAddLines(WriteFileName, sNewLineForTable);
 		}
 
@@ -121,22 +133,26 @@ namespace PyprTextToolLib
 				FileLineCache.TryAdd(sFileName, new ConcurrentBag<string>());
 			FileLineCache[sFileName].Add(sLinesOfData);
 
-			if (FileLineCache[sFileName].Count > 20)
+			if (FileLineCache[sFileName].Count > 40)
 			{
-				using (StreamWriter SW = new StreamWriter(sFileName, true)) // thread contention
-				{
-					//Console.WriteLine("Writing to file |{0}| from thread |{1}", sFileName, Thread.CurrentThread.ManagedThreadId.ToString());
-					var bag = FileLineCache[sFileName];
-					string line;
-					while(!bag.IsEmpty)
-					{
-						if(bag.TryTake(out line))
-							SW.Write(line);
-					}
-				}
+				FlushCacheForFile(sFileName);
 			}
 		}
-	
+
+		private void FlushCacheForFile(string filename)
+		{
+			using (StreamWriter SW = new StreamWriter(filename, true)) // thread contention
+			{
+				var bag = FileLineCache[filename];
+				string line;
+				while (!bag.IsEmpty)
+				{
+					if (bag.TryTake(out line))
+						SW.Write(line);
+				}
+			}
+
+		}
 
 		/// <summary>
 		///  not thread safe
@@ -145,16 +161,8 @@ namespace PyprTextToolLib
 		{
 			foreach (KeyValuePair<string, ConcurrentBag<string>> kvp in FileLineCache)
 			{
-				using (StreamWriter SW = new StreamWriter(kvp.Key, true))
-				{
-					var bag = FileLineCache[kvp.Key];
-					string line;
-					while (!bag.IsEmpty)
-					{
-						if (bag.TryTake(out line))
-							SW.Write(line);
-					}
-				}
+				FlushCacheForFile(kvp.Key);
+			
 			}
 		}
 
