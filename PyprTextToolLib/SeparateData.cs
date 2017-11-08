@@ -17,17 +17,12 @@ namespace PyprTextToolLib
 		private Dictionary<string, string> dTableMap;
 		private bool UseParallelForEach { get; set; }
 
-		//[ThreadStatic]
-		//private Dictionary<string, List<string>> FileLineCache;
-		private ConcurrentDictionary<string, ConcurrentBag<string>> FileLineCache;
-
 		public SeparateData(string outputDirectory, string[] fileNames, bool? useParallelForEach = false)
 		{
 			if (useParallelForEach == null)
 				useParallelForEach = false;
 			UseParallelForEach = useParallelForEach.Value;
 			dTableMap = new Dictionary<string, string>();
-			FileLineCache = new ConcurrentDictionary<string, ConcurrentBag<string>>();
 			OutputDirectory = outputDirectory;
 			sFileNames = fileNames;
 			InitDictionary(dTableMap);
@@ -36,13 +31,12 @@ namespace PyprTextToolLib
 
 		public Task Process(IProgress<int> prog, IProgress<int> subProg, CancellationToken ct)
 		{
+			
 			return Task.Run(() =>
 				{
 					int total = sFileNames.Count();
 					if (UseParallelForEach) // each thread will handle the reading of and writing out of a single file.
 					{
-						ConcurrentDictionary<string, string> ConCurrentTableMap =
-							new ConcurrentDictionary<string, string>(dTableMap);
 						Parallel.ForEach(sFileNames,
 							(file) =>
 							{
@@ -50,10 +44,6 @@ namespace PyprTextToolLib
 								prog.Report(1);
 							}
 						);
-						foreach (KeyValuePair<string, ConcurrentBag<string>> kvp in FileLineCache)
-						{
-							Console.WriteLine("Cache has |{0}| files that need to write |{1}| file", kvp.Value.Count(), kvp.Key);
-						}
 					}
 					else
 					{
@@ -68,53 +58,59 @@ namespace PyprTextToolLib
 							prog.Report(1);
 							total--;
 						}
-						foreach(KeyValuePair<string, ConcurrentBag<string>> kvp in FileLineCache)
-						{
-						Console.WriteLine("Cache has |{0}| files that need to write |{1}| file", kvp.Value.Count(), kvp.Key);
-						}
-					
+						
 					}
+					
 					Console.WriteLine("Final flushing Cache");
-					FlushCache();
+				
 				}, ct);
 		}
 		
 
-		private void ParseFile(string sFileName)
+		private void ParseFile(string sourceFileName)
 		{
-				Console.WriteLine("thread number |{0}| is working on file |{1}|", System.Threading.Thread.CurrentThread.ManagedThreadId, sFileName);
-					string sDate = sFileName.Substring(sFileName.Length - 12, 8);
-					using (StreamReader SR = new StreamReader(sFileName))
+				Console.WriteLine("thread number |{0}| is working on file |{1}|", System.Threading.Thread.CurrentThread.ManagedThreadId, sourceFileName);
+				string sDate = sourceFileName.Substring(sourceFileName.Length - 12, 8);
+				List<string> FilesToWrite = new List<string>();
+				
+					using (StreamReader SR = new StreamReader(sourceFileName))
 					{
-						while (SR.Peek() > 0)
+						Dictionary<string, StreamWriter> streamWriters = new Dictionary<string, StreamWriter>();
+						// create all the streamwriters for a file here.
+						foreach (KeyValuePair<string, string> Pair in dTableMap)
 						{
-							string sLine = SR.ReadLine();
-							
-							if (false)
+							//string targetTemplateFileName = Pair.Key;
+							string WriteFileName = Pair.Key.Substring(0, Pair.Key.Length - 4) + "_" + sDate + ".txt";
+							streamWriters.Add(Pair.Key, new StreamWriter(WriteFileName, true));
+						}
+							while (SR.Peek() > 0)
 							{
-							}
-							else
-							{
-								foreach (KeyValuePair<string, string> Pair in dTableMap)
+								string sLine = SR.ReadLine();
+
+								if (false)
 								{
-									ExtractLineData(sLine, Pair, sDate);
+								}
+								else
+								{
+									foreach (KeyValuePair<string, string> Pair in dTableMap)
+									{
+										//string WriteFileName = Pair.Key.Substring(0, sFileName.Length - 4) + "_" + sDate + ".txt";
+										string newline = ExtractLineData(sLine, Pair, sDate);
+										streamWriters[Pair.Key].WriteLine(newline);
+									}
 								}
 							}
-							//if (ct.IsCancellationRequested)
-							//{
-							//	throw new OperationCanceledException();
-							//}
-							//prog.Report(1);
-						}
+							foreach (KeyValuePair<string, StreamWriter> sw in streamWriters)
+							{
+								sw.Value.Close();
+								sw.Value.Dispose();
+							}
 					}
 		}
 
-		private void ExtractLineData(string sLineData, KeyValuePair<string, string> tableMapPair, string sDate)
+		private string ExtractLineData(string sLineData, KeyValuePair<string, string> tableMapPair, string sDate)
 		{
-			string sFileName = tableMapPair.Key; // target file name w/o date suffix
-			string WriteFileName = sFileName.Substring(0, sFileName.Length - 4) + "_" + sDate + ".txt"; // creating the actual file name to write to.
 			string[] oColumDef = tableMapPair.Value.Split(','); // columns in the source file that go into the target file
-			//string[] oColumDef = sColumDef.Split(','); // the column number I'm after in the Line.
 			string[] oLineData = sLineData.Split('|'); // source file data converted to array data.
 
 			string sNewLineForTable = "";
@@ -124,49 +120,11 @@ namespace PyprTextToolLib
 			}
 					
 			sNewLineForTable = sNewLineForTable.Substring(0, sNewLineForTable.LastIndexOf('|'));
-			
-			eAddLines(WriteFileName, sNewLineForTable);
+			return sNewLineForTable;
+			//eAddLines(writeFileName, sNewLineForTable);
 		}
 
-		private void eAddLines(string sFileName, string sLinesOfData)
-		{
-			if (!FileLineCache.ContainsKey(sFileName))
-				FileLineCache.TryAdd(sFileName, new ConcurrentBag<string>());
-			FileLineCache[sFileName].Add(sLinesOfData);
-
-			if (FileLineCache[sFileName].Count > 10)
-			{
-				FlushCacheForFile(sFileName);
-			}
-		}
-
-		private void FlushCacheForFile(string filename)
-		{
-			using (StreamWriter SW = new StreamWriter(filename, true)) // thread contention
-			{
-				var bag = FileLineCache[filename];
-				string line;
-				while (!bag.IsEmpty)
-				{
-					if (bag.TryTake(out line))
-						SW.Write(line);
-				}
-			}
-
-		}
-
-		/// <summary>
-		///  not thread safe
-		/// </summary>
-		private void FlushCache()
-		{
-			foreach (KeyValuePair<string, ConcurrentBag<string>> kvp in FileLineCache)
-			{
-				FlushCacheForFile(kvp.Key);
-			
-			}
-		}
-
+		
 		private void InitDictionary(Dictionary<string, string> dTableMap)
 		{
 			// Xref population file
